@@ -365,22 +365,10 @@ void Menu::draw(bool selected){
         return;
     }
 
-    // at rest each column shows what it is (category name) and which game is selected
-    if (animating == 0 && !fastScrolling && this->entries->size() > 0){
-
-        Entry* cur = getEntry();
-
-        if (!selected && this->label.size() > 0)
-            common::printText(xoffset+2, 146, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
-
-        int title_y = selected ? (curentry_yoffset + 84) : 160;
-        float title_size = selected ? SIZE_LITTLE : SIZE_TINY;
-        string title = cur->getName();
-        while (title.size() > 4 && common::calcTextWidth(title.c_str(), title_size, 0) > 140)
-            title.erase(title.size()-1);
-
-        common::printText(xoffset+2, title_y, title.c_str(), GRAY_COLOR, title_size, 0, NULL, 0);
-    }
+    // at rest an unfocused column only says which category it is: the game titles live
+    // in the header, and drawing them under every icon made the three columns collide
+    if (animating == 0 && !fastScrolling && !selected && this->label.size() > 0 && this->entries->size() > 0)
+        common::printText(xoffset+2, 146, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
 }
 
 void Menu::animStart(int direction){
