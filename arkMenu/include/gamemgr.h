@@ -44,7 +44,6 @@ class GameManager : public SystemEntry{
         /* columns: one per category, drawn side by side (three visible at a time) */
         vector<Menu*> colMenus;
         vector<string> colLabels;
-        vector<string> colTokens;   // column order/selection (optional SEPLUGINS/arkmenu_columns.txt)
         int colOffset;              // first visible column
         
         /* filters read from SEPLUGINS/gclite_filter.txt (keeps launcher in sync with the XMB) */
@@ -73,7 +72,6 @@ class GameManager : public SystemEntry{
         void rebuildFavoritesMenu();
         /* columns: one per category, side by side, with a sliding three-column window */
         void buildColumns();
-        void loadColumns();
         void clampCamera();
         void focusColumn(int index);
         void columnJumpList();

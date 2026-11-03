@@ -210,7 +210,6 @@ void GameManager::findEntries(){
     this->loadFavorites();
     this->rebuildFavoritesMenu();
     this->scanFolderCategories();
-    this->loadColumns();
     this->buildColumns();
     this->clampCamera();
     this->applyFavorites();
@@ -866,7 +865,6 @@ void GameManager::startBoot(){
  * ===================================================================== */
 
 #define FAVORITES_FILE "ms0:/SEPLUGINS/arkmenu_fav.txt"
-#define COLUMNS_FILE   "ms0:/SEPLUGINS/arkmenu_columns.txt"
 
 /* read SEPLUGINS/gclite_filter.txt so the launcher hides what the XMB hides */
 void GameManager::loadGclFilters(){
@@ -1114,37 +1112,6 @@ void GameManager::rebuildFavoritesMenu(){
  * three-column window (left/right moves the focus, the strip follows it)
  * ----------------------------------------------------------------------- */
 
-/* column order/selection; without the file every category becomes a column */
-void GameManager::loadColumns(){
-
-    colTokens.clear();
-
-    SceUID fp = sceIoOpen(COLUMNS_FILE, PSP_O_RDONLY, 0777);
-    if (fp < 0)
-        return;
-
-    char buf[512];
-    memset(buf, 0, sizeof(buf));
-    int n = sceIoRead(fp, buf, sizeof(buf)-1);
-    sceIoClose(fp);
-    if (n <= 0)
-        return;
-
-    char* saveptr = NULL;
-    for (char* line = strtok_r(buf, "\r\n", &saveptr); line != NULL; line = strtok_r(NULL, "\r\n", &saveptr)){
-        string token = line;
-        while (token.size() > 0 && (token[0] == ' ' || token[0] == '\t'))
-            token.erase(0, 1);
-        while (token.size() > 0 && (token[token.size()-1] == ' ' || token[token.size()-1] == '\t'))
-            token.erase(token.size()-1);
-        if (token.size() == 0)
-            continue;
-        if (token == "default" || token == "games" || token == "all")
-            token = "";
-        colTokens.push_back(token);
-    }
-}
-
 /* build the column strip: all games, every ISO folder, favorites, homebrew, PS1 */
 void GameManager::buildColumns(){
 
@@ -1152,15 +1119,15 @@ void GameManager::buildColumns(){
     if (selectedCategory >= 0 && selectedCategory < (int)colLabels.size())
         previous = colLabels[selectedCategory];
 
-    vector<string> tokens = this->colTokens;
-    if (tokens.empty()){
-        tokens.push_back("");
-        for (unsigned int i=1; i<folderNames.size(); i++)
-            tokens.push_back(folderNames[i]);
-        tokens.push_back("favorites");
-        tokens.push_back("homebrew");
-        tokens.push_back("pops");
-    }
+    // every category becomes a column, directly from the scan: a stale configuration
+    // file can neither hide categories nor put the same menu into two columns
+    vector<string> tokens;
+    tokens.push_back("");
+    for (unsigned int i=1; i<folderNames.size(); i++)
+        tokens.push_back(folderNames[i]);
+    tokens.push_back("favorites");
+    tokens.push_back("homebrew");
+    tokens.push_back("pops");
 
     colMenus.clear();
     colLabels.clear();
@@ -1201,6 +1168,17 @@ void GameManager::buildColumns(){
 
         if (menu == NULL || menu->empty())
             continue; // skip sources that are missing or hold no games
+
+        // a menu may only appear once: two columns sharing a menu would fight over its slot
+        bool already_shown = false;
+        for (unsigned int c=0; c<colMenus.size(); c++){
+            if (colMenus[c] == menu){
+                already_shown = true;
+                break;
+            }
+        }
+        if (already_shown)
+            continue;
 
         colMenus.push_back(menu);
         colLabels.push_back(label);
