@@ -12,12 +12,12 @@ static float easeMenuAnimation(float progress){
 
 static float menuRowY(float row){
     if (row < 0)
-        return (row <= -1.f) ? 76 + (row + 1) * 40 : 76 + (row + 1) * 45;
-    return (row <= 1.f) ? 116 + row * 90 : 206 + (row - 1) * 40;
+        return (row <= -1.f) ? 72 + (row + 1) * 40 : 72 + (row + 1) * 45;
+    return (row <= 1.f) ? 112 + row * 90 : 202 + (row - 1) * 40;
 }
 
 static int selectedMenuRowY(int height){
-    return (height == 80) ? 116 : (272 - height) / 2 + 5;
+    return (height == 80) ? 112 : (272 - height) / 2 + 5;
 }
 
 static float fastScrollInterpolation(){
@@ -146,7 +146,7 @@ void Menu::draw(bool selected){
     this->checkIndex();
 
     int xoffset = this->slot*144 + (this->slot+1)*10 + 5 + (int)this->slideX;
-    int yoffset = 36;   // the first 16 px of the column are the category label
+    int yoffset = 32;   // the label of the column sits 20..32, above its first row
     int curentry_yoffset = 0;
     bool scrollAnimation = !fastScrolling && (animating == -1 || animating == 1);
     bool categoryAnimation = animating == 2 || animating == -2;
@@ -159,7 +159,7 @@ void Menu::draw(bool selected){
     if (selected && fastScrolling){
         int height = 240/entries->size();
         int x = xoffset-7;
-        int y = 24;
+        int y = 22;
         ya2d_draw_rect(x+2, y, 3, height*entries->size(), DARKGRAY, 1);
         ya2d_draw_rect(x+1, y + index*height, 5, height, DARKGRAY, 1);
         ya2d_draw_rect(x+3, y, 1, height*entries->size(), LITEGRAY, 1);
@@ -367,10 +367,10 @@ void Menu::draw(bool selected){
 
     // at rest every column is titled above its list; game titles live in the header only
     // (drawing them under every icon made the three columns collide).
-    // y is the text's baseline-ish anchor, not its top: y=30 puts the glyphs between the
-    // 20 px system bar and the first row at y=36.
+    // y is the text's baseline-ish anchor, not its top: y=26 keeps the glyphs (~4 px above
+    // the anchor) clear of the 20 px system bar while sitting right above the first row
     if (animating == 0 && !fastScrolling && this->label.size() > 0 && this->entries->size() > 0)
-        common::printText(xoffset+2, 30, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
+        common::printText(xoffset+2, 26, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
 }
 
 void Menu::animStart(int direction){
