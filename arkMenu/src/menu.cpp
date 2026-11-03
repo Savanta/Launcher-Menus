@@ -12,12 +12,12 @@ static float easeMenuAnimation(float progress){
 
 static float menuRowY(float row){
     if (row < 0)
-        return (row <= -1.f) ? 72 + (row + 1) * 40 : 72 + (row + 1) * 45;
-    return (row <= 1.f) ? 112 + row * 90 : 202 + (row - 1) * 40;
+        return (row <= -1.f) ? 32 + (row + 1) * 40 : 32 + (row + 1) * 45;
+    return (row <= 1.f) ? 72 + row * 90 : 162 + (row - 1) * 40;
 }
 
 static int selectedMenuRowY(int height){
-    return (height == 80) ? 112 : (272 - height) / 2 + 5;
+    return (height == 80) ? 72 : (272 - height) / 2 + 5;
 }
 
 static float fastScrollInterpolation(){
@@ -190,7 +190,8 @@ void Menu::draw(bool selected){
             float scale = startScale + (endScale - startScale) * easedProgress;
             float focus = focused ? (selected ? easedProgress : 1.f - easedProgress) : 0.f;
             float x = xoffset + 5.f * focus;
-            icon->draw_scale((int)x, (int)y, scale, scale);
+            if (y >= 30.f)  // never draw over the label band / system bar
+                icon->draw_scale((int)x, (int)y, scale, scale);
         }
 
         if (finishAnimation){
@@ -227,7 +228,8 @@ void Menu::draw(bool selected){
                 float scale = 0.5f + 0.5f * focus;
                 float x = xoffset + 5.f * focus;
                 float y = row == 0.f ? selectedMenuRowY(icon->texture->height) : menuRowY(row);
-                icon->draw_scale((int)x, (int)y, scale, scale);
+                if (y >= 30.f)  // never draw over the label band / system bar
+                    icon->draw_scale((int)x, (int)y, scale, scale);
             }
         }
 
@@ -293,7 +295,8 @@ void Menu::draw(bool selected){
                     : menuRowY(endRow);
                 float x = startX + (endX - startX) * easedProgress;
                 float y = startY + (endY - startY) * easedProgress;
-                icon->draw_scale((int)x, (int)y, scale, scale);
+                if (y >= 30.f)  // never draw over the label band / system bar
+                    icon->draw_scale((int)x, (int)y, scale, scale);
             }
         }
 
@@ -310,7 +313,9 @@ void Menu::draw(bool selected){
         return;
     }
 
-    for (int i=this->index-2; yoffset<258; i++){
+    // only one row is reserved above the focused icon: with two, a column sitting at its
+    // first entry left an 80 px hole between the label and the icon
+    for (int i=this->index-1; yoffset<258; i++){
         if (i < 0){
             yoffset+=40;
             continue;
