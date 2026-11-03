@@ -1,7 +1,7 @@
 PSPSDK = $(shell psp-config --pspsdk-path)
 
 TARGET = ARKMENU
-CFLAGS = -Os -G0 -Wall -Wno-unused -Wno-write-strings -Wno-sign-compare
+CFLAGS = -Os -G0 -Wall -Wno-unused -Wno-write-strings -Wno-sign-compare -MMD -MP
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
 ifdef DEBUG
@@ -99,3 +99,7 @@ LIBS = \
 	-larkctrl \
 
 include $(PSPSDK)/lib/build.mak
+
+# The stock pspdev template only depends on the .cpp: without these, editing a header
+# leaves stale objects and silently links the previous code.
+-include $(OBJS:.o=.d)

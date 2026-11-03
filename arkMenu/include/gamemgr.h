@@ -172,21 +172,9 @@ class GameManager : public SystemEntry{
             string info = getInfo();
             bool is_entry_info = (getEntry() != NULL && info == getEntry()->getName());
             bool translate = ( !is_entry_info || info == "Recovery Menu" || info == "UMD Drive");
-            // the source of the focused column is shown in front of the game name, in the
-            // same line and on the same strip as the rest of the header text
-            float x = 5;
-            if (selectedCategory >= 0 && selectedCategory < (int)colLabels.size() && colLabels[selectedCategory].size() > 0){
-                string label = colLabels[selectedCategory];
-                // drop a leading "NN " ordering prefix: the header stays compact, the
-                // picker still shows the full name
-                if (label.size() > 3 && label[0] >= '0' && label[0] <= '9' &&
-                    label[1] >= '0' && label[1] <= '9' && label[2] == ' ')
-                    label = label.substr(3);
-                string tag = "[" + label + "]";
-                common::printText(x, 13, tag.c_str(), YELLOW_COLOR, SIZE_MEDIUM, 0, NULL, 0);
-                x += common::calcTextWidth(tag.c_str(), SIZE_MEDIUM, 0) + 6;
-            }
-            common::printText(x, 13, info.c_str(), LITEGRAY, SIZE_MEDIUM, 0, &scroll, translate);
+            // the category name is drawn above its own column now, so the header carries
+            // only the selected entry's name (battery and date come from SystemEntry)
+            common::printText(5, 13, info.c_str(), LITEGRAY, SIZE_MEDIUM, 0, &scroll, translate);
         }
         
         /* Control the icon threads */

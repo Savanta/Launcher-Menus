@@ -12,12 +12,12 @@ static float easeMenuAnimation(float progress){
 
 static float menuRowY(float row){
     if (row < 0)
-        return (row <= -1.f) ? 60 + (row + 1) * 40 : 60 + (row + 1) * 45;
-    return (row <= 1.f) ? 105 + row * 85 : 190 + (row - 1) * 40;
+        return (row <= -1.f) ? 76 + (row + 1) * 40 : 76 + (row + 1) * 45;
+    return (row <= 1.f) ? 116 + row * 90 : 206 + (row - 1) * 40;
 }
 
 static int selectedMenuRowY(int height){
-    return (height == 80) ? 105 : (272 - height) / 2 + 5;
+    return (height == 80) ? 116 : (272 - height) / 2 + 5;
 }
 
 static float fastScrollInterpolation(){
@@ -146,7 +146,7 @@ void Menu::draw(bool selected){
     this->checkIndex();
 
     int xoffset = this->slot*144 + (this->slot+1)*10 + 5 + (int)this->slideX;
-    int yoffset = 20;
+    int yoffset = 36;   // the first 16 px of the column are the category label
     int curentry_yoffset = 0;
     bool scrollAnimation = !fastScrolling && (animating == -1 || animating == 1);
     bool categoryAnimation = animating == 2 || animating == -2;
@@ -159,7 +159,7 @@ void Menu::draw(bool selected){
     if (selected && fastScrolling){
         int height = 240/entries->size();
         int x = xoffset-7;
-        int y = yoffset+10;
+        int y = 24;
         ya2d_draw_rect(x+2, y, 3, height*entries->size(), DARKGRAY, 1);
         ya2d_draw_rect(x+1, y + index*height, 5, height, DARKGRAY, 1);
         ya2d_draw_rect(x+3, y, 1, height*entries->size(), LITEGRAY, 1);
@@ -365,10 +365,10 @@ void Menu::draw(bool selected){
         return;
     }
 
-    // at rest an unfocused column only says which category it is: the game titles live
-    // in the header, and drawing them under every icon made the three columns collide
-    if (animating == 0 && !fastScrolling && !selected && this->label.size() > 0 && this->entries->size() > 0)
-        common::printText(xoffset+2, 146, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
+    // at rest every column is titled above its list; game titles live in the header only
+    // (drawing them under every icon made the three columns collide)
+    if (animating == 0 && !fastScrolling && this->label.size() > 0 && this->entries->size() > 0)
+        common::printText(xoffset+2, 22, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
 }
 
 void Menu::animStart(int direction){
