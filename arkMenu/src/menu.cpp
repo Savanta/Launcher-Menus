@@ -366,9 +366,11 @@ void Menu::draw(bool selected){
     }
 
     // at rest every column is titled above its list; game titles live in the header only
-    // (drawing them under every icon made the three columns collide)
+    // (drawing them under every icon made the three columns collide).
+    // y is the text's baseline-ish anchor, not its top: y=30 puts the glyphs between the
+    // 20 px system bar and the first row at y=36.
     if (animating == 0 && !fastScrolling && this->label.size() > 0 && this->entries->size() > 0)
-        common::printText(xoffset+2, 22, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
+        common::printText(xoffset+2, 30, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
 }
 
 void Menu::animStart(int direction){
