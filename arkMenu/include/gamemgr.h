@@ -41,10 +41,11 @@ class GameManager : public SystemEntry{
         vector<Menu*> folderMenus;
         vector<string> folderNames;
         
-        /* what each of the three columns shows:
-           "" = the column's own default menu, "favorites", "homebrew", "pops", or a folder name */
-        Menu* colMenus[MAX_CATEGORIES];
-        string colSource[MAX_CATEGORIES];
+        /* columns: one per category, drawn side by side (three visible at a time) */
+        vector<Menu*> colMenus;
+        vector<string> colLabels;
+        vector<string> colTokens;   // column order/selection (optional SEPLUGINS/arkmenu_columns.txt)
+        int colOffset;              // first visible column
         
         /* filters read from SEPLUGINS/gclite_filter.txt (keeps launcher in sync with the XMB) */
         vector<string> hiddenCategories;
@@ -70,16 +71,12 @@ class GameManager : public SystemEntry{
         void saveFavorites();
         void applyFavorites();
         void rebuildFavoritesMenu();
-        /* columns (customizable sources, persisted in SEPLUGINS/arkmenu_columns.txt) */
-        void resolveColumns();
+        /* columns: one per category, side by side, with a sliding three-column window */
+        void buildColumns();
         void loadColumns();
-        void saveColumns();
-        void assignColumn(int col, const string& token);
-        void cycleColumn(int direction);
-        void categoryPicker();
-        vector<string> sourceTokens();
-        string sourceLabel(const string& token, int col);
-        int sourceCount(const string& token, int col);
+        void clampCamera();
+        void focusColumn(int index);
+        void columnJumpList();
         
         /* frames during which button actions are ignored (right after switching category) */
         int input_lock;
@@ -169,8 +166,14 @@ class GameManager : public SystemEntry{
             // the source of the focused column is shown in front of the game name, in the
             // same line and on the same strip as the rest of the header text
             float x = 5;
-            if (selectedCategory >= 0 && colSource[selectedCategory].size() > 0){
-                string tag = "[" + sourceLabel(colSource[selectedCategory], selectedCategory) + "]";
+            if (selectedCategory >= 0 && selectedCategory < (int)colLabels.size() && colLabels[selectedCategory].size() > 0){
+                string label = colLabels[selectedCategory];
+                // drop a leading "NN " ordering prefix: the header stays compact, the
+                // picker still shows the full name
+                if (label.size() > 3 && label[0] >= '0' && label[0] <= '9' &&
+                    label[1] >= '0' && label[1] <= '9' && label[2] == ' ')
+                    label = label.substr(3);
+                string tag = "[" + label + "]";
                 common::printText(x, 13, tag.c_str(), YELLOW, SIZE_MEDIUM, 0, NULL, 0);
                 x += common::calcTextWidth(tag.c_str(), SIZE_MEDIUM, 0) + 6;
             }

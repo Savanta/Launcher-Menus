@@ -72,15 +72,12 @@ GameManager::GameManager(){
         this->categories[i] = new Menu((EntryType)i);
     }
 
-    // column sources: "" means "whatever this column shows by default"
+    // column strip: one column per category, built after the scan
     this->input_lock = 0;
     this->favoritesMenu = NULL;
     this->folderMenus.push_back(this->categories[GAME]);
     this->folderNames.push_back("");
-    for (int i=0; i<MAX_CATEGORIES; i++){
-        this->colSource[i] = "";
-        this->colMenus[i] = this->categories[i];
-    }
+    this->colOffset = 0;
 
     // start the multithreaded icon loading
     this->maxDraw = MAX_CATEGORIES;
@@ -128,7 +125,8 @@ int GameManager::loadIcons(SceSize _args, void *_argp){
             sceKernelDelayThread(0);
             continue;
         }
-        for (int i=0; i<MAX_CATEGORIES; i++){
+        int visible = (int)self->colMenus.size();
+        for (int i=self->colOffset; i<self->colOffset+MAX_CATEGORIES && i<visible; i++){
             if (self->colMenus[i] != NULL)
                 self->colMenus[i]->loadIconsDynamic(i == self->selectedCategory);
             sceKernelDelayThread(0);
@@ -149,7 +147,7 @@ void GameManager::pauseIcons(){
 
 void GameManager::resumeIcons(){
     if (self->dynamicIconRunning == ICONS_LOADING) return; // already running
-    for (int i=0; i<MAX_CATEGORIES; i++){
+    for (unsigned int i=0; i<colMenus.size(); i++){
         if (colMenus[i] != NULL)
             colMenus[i]->resumeIconLoading();
     }
@@ -165,8 +163,10 @@ bool GameManager::waitIconsLoad(bool forceQuit){
     if (icon_status == ICONS_LOADING)
         this->pauseIcons();
 
-    for (int i = 0; i<MAX_CATEGORIES; i++){
-        Menu* menu = (this->colMenus[i] != NULL) ? this->colMenus[i] : this->categories[i];
+    for (int i = this->colOffset; i < this->colOffset+MAX_CATEGORIES && i < (int)this->colMenus.size(); i++){
+        Menu* menu = this->colMenus[i];
+        if (menu == NULL)
+            continue;
         if (!menu->waitIconsLoad(i == selectedCategory, forceQuit))
             return false;
     }
@@ -206,12 +206,13 @@ void GameManager::findEntries(){
     this->findISOs("ms0:/ISO/");
     if (!ms_is_ef) this->findISOs("ef0:/ISO/");
 
-    // build the ISO folder categories (folder mode), apply favorites and resolve the columns
+    // build the ISO folder categories (folder mode), apply favorites and the column strip
     this->loadFavorites();
     this->rebuildFavoritesMenu();
     this->scanFolderCategories();
     this->loadColumns();
-    this->resolveColumns();
+    this->buildColumns();
+    this->clampCamera();
     this->applyFavorites();
 
     if (common::config.sort_entries){
@@ -357,28 +358,34 @@ Entry* GameManager::getEntry(){
 }
 
 int GameManager::getPreviousCategory(int current){
+    int n = (int)this->colMenus.size();
+    if (n < 1)
+        return current;
     int guard = 0;
     do { 
         if (current > 0){
             current--;
         }
         else{
-            current = MAX_CATEGORIES-1;
+            current = n-1;
         }
-    } while ((this->colMenus[current] == NULL || this->colMenus[current]->empty()) && ++guard < MAX_CATEGORIES);
+    } while ((this->colMenus[current] == NULL || this->colMenus[current]->empty()) && ++guard < n);
     return current;
 }
 
 int GameManager::getNextCategory(int current){
+    int n = (int)this->colMenus.size();
+    if (n < 1)
+        return current;
     int guard = 0;
     do {
-        if (current < MAX_CATEGORIES-1){
+        if (current < n-1){
             current++;
         }
         else{
             current = 0;
         }
-    } while ((this->colMenus[current] == NULL || this->colMenus[current]->empty()) && ++guard < MAX_CATEGORIES);
+    } while ((this->colMenus[current] == NULL || this->colMenus[current]->empty()) && ++guard < n);
     return current;
 }
 
@@ -389,9 +396,12 @@ void GameManager::moveLeft(){
     SystemMgr::pauseDraw();
     int auxCategory = getPreviousCategory(selectedCategory);
     if (auxCategory != selectedCategory){
-        this->categories[selectedCategory]->animStart(-2);
-        this->categories[auxCategory]->animStart(-2);
+        Menu* old_menu = currentMenu();
         selectedCategory = auxCategory;
+        Menu* new_menu = currentMenu();
+        if (old_menu) old_menu->animStart(-2);
+        if (new_menu && new_menu != old_menu) new_menu->animStart(-2);
+        this->clampCamera();
         SystemMgr::resumeDraw();
         common::sound_mp3->play();
     }
@@ -407,9 +417,12 @@ void GameManager::moveRight(){
     int auxCategory = getNextCategory(selectedCategory);
     
     if (auxCategory != selectedCategory){
-        this->categories[selectedCategory]->animStart(2);
-        this->categories[auxCategory]->animStart(2);
+        Menu* old_menu = currentMenu();
         selectedCategory = auxCategory;
+        Menu* new_menu = currentMenu();
+        if (old_menu) old_menu->animStart(2);
+        if (new_menu && new_menu != old_menu) new_menu->animStart(2);
+        this->clampCamera();
         SystemMgr::resumeDraw();
         common::sound_mp3->play();
     }
@@ -467,17 +480,22 @@ string GameManager::getInfo(){
 
 void GameManager::draw(){
     if (this->selectedCategory >= 0){
-        for (int i=0; i<this->maxDraw; i++){
+        for (int i=this->colOffset; i<this->colOffset+this->maxDraw; i++){
+            if (i >= (int)this->colMenus.size())
+                break;
             if (i == (int)this->selectedCategory)
                 continue;
-            Menu* col = (this->colMenus[i] != NULL) ? this->colMenus[i] : this->categories[i];
-            col->setSlot(i);
+            Menu* col = this->colMenus[i];
+            if (col == NULL)
+                continue;
+            col->setSlot(i - this->colOffset);
             col->draw(false);
             sceKernelDelayThread(0);
         }
         Menu* menu = currentMenu();
-        if (this->selectedCategory < this->maxDraw && menu){
-            menu->setSlot(this->selectedCategory);
+        if (menu != NULL && selectedCategory >= this->colOffset &&
+            selectedCategory < this->colOffset + this->maxDraw){
+            menu->setSlot(this->selectedCategory - this->colOffset);
             menu->draw(true);
         }
         if (optionsmenu) optionsmenu->draw();
@@ -559,16 +577,16 @@ void GameManager::control(Controller* pad){
         }
     }
     else if (pad->RT()){
-        // R steps the focused column through the available sources
-        if (selectedCategory >= 0 && !busy && folderNames.size() > 1){
-            this->cycleColumn(1);
+        // R jumps to the next category column (same as right, handy for long strips)
+        if (selectedCategory >= 0 && !busy){
+            this->moveRight();
         }
     }
     else if (pad->square()){
-        // square opens the source list of the focused column, preselected on the current source
-        if (selectedCategory >= 0 && !busy && folderNames.size() > 1){
+        // square lists every category and jumps straight to it
+        if (selectedCategory >= 0 && !busy){
             common::sound_mp3->play();
-            this->categoryPicker();
+            this->columnJumpList();
             pad->flush();
         }
     }
@@ -769,12 +787,11 @@ void GameManager::gameOptionsMenu(){
             // resume drawing
             SystemMgr::resumeDraw();
 
-            // if the focused column's source became empty (its last game was deleted),
-            // fall back to whatever that column shows by default
-            if (selectedCategory >= 0 && colSource[selectedCategory].size() > 0 &&
+            // if the focused column became empty (its last game was deleted), rebuild the strip
+            if (selectedCategory >= 0 && selectedCategory < (int)colMenus.size() &&
                 colMenus[selectedCategory] != NULL && colMenus[selectedCategory]->empty()){
-                colSource[selectedCategory] = "";
-                this->resolveColumns();
+                this->buildColumns();
+                this->clampCamera();
             }
 
             // delete file/folder
@@ -975,7 +992,7 @@ void GameManager::scanFolderCategories(){
                 }
     }
 
-    // the columns are re-resolved by the caller (resolveColumns())
+    // the column strip is rebuilt by the caller (buildColumns())
 }
 
 void GameManager::loadFavorites(){
@@ -1056,7 +1073,8 @@ void GameManager::rebuildFavoritesMenu(){
     }
 
     if (favorites.size() == 0){
-        this->resolveColumns();
+        this->buildColumns();
+        this->clampCamera();
         return;
     }
 
@@ -1076,7 +1094,8 @@ void GameManager::rebuildFavoritesMenu(){
 
     if (menu->empty()){
         delete menu;
-        this->resolveColumns();
+        this->buildColumns();
+        this->clampCamera();
         return;
     }
 
@@ -1086,110 +1105,19 @@ void GameManager::rebuildFavoritesMenu(){
     favoritesMenu = menu;
     folderMenus.push_back(menu);
     folderNames.push_back(TR("* Favorites"));
-    this->resolveColumns();
+    this->buildColumns();
+        this->clampCamera();
 }
 
 /* -------------------------------------------------------------------------
- * customizable columns (#86): each of the three columns can show any source
- * (all games, favorites, an ISO folder, homebrew or the PS1 list)
+ * category columns: one column per category, side by side, with a sliding
+ * three-column window (left/right moves the focus, the strip follows it)
  * ----------------------------------------------------------------------- */
 
-vector<string> GameManager::sourceTokens(){
-    vector<string> tokens;
-    tokens.push_back("");              // the column's own default menu
-    tokens.push_back("favorites");
-    for (unsigned int i=1; i<folderNames.size(); i++)
-        tokens.push_back(folderNames[i]);
-    tokens.push_back("homebrew");
-    tokens.push_back("pops");
-    return tokens;
-}
-
-string GameManager::sourceLabel(const string& token, int col){
-    if (token.size() == 0){
-        if (col == (int)HOMEBREW) return "Homebrew";
-        if (col == (int)POPS) return "PS1";
-        return "All games";
-    }
-    if (token == "favorites") return "* Favorites";
-    if (token == "homebrew") return "Homebrew";
-    if (token == "pops") return "PS1";
-    return token;
-}
-
-int GameManager::sourceCount(const string& token, int col){
-
-    Menu* menu = NULL;
-
-    if (token.size() == 0){
-        if (col < 0 || col >= MAX_CATEGORIES) return 0;
-        menu = this->categories[col];
-    }
-    else if (token == "favorites"){
-        menu = favoritesMenu;
-    }
-    else if (token == "homebrew"){
-        menu = this->categories[HOMEBREW];
-    }
-    else if (token == "pops"){
-        menu = this->categories[POPS];
-    }
-    else if (token == "games" || token == "all"){
-        menu = this->categories[GAME];
-    }
-    else{
-        for (unsigned int f=1; f<folderNames.size(); f++){
-            if (folderNames[f] == token){
-                menu = folderMenus[f];
-                break;
-            }
-        }
-    }
-
-    return (menu != NULL) ? (int)menu->entries->size() : 0;
-}
-
-/* map every column source onto an actual menu; a source that vanished falls back to the default */
-void GameManager::resolveColumns(){
-
-    for (int i=0; i<MAX_CATEGORIES; i++){
-
-        Menu* menu = this->categories[i];
-
-        if (colSource[i].size() > 0){
-            if (colSource[i] == "favorites"){
-                if (favoritesMenu) menu = favoritesMenu;
-            }
-            else if (colSource[i] == "homebrew"){
-                menu = this->categories[HOMEBREW];
-            }
-            else if (colSource[i] == "pops"){
-                menu = this->categories[POPS];
-            }
-            else if (colSource[i] == "games" || colSource[i] == "all"){
-                menu = this->categories[GAME];
-            }
-            else{
-                for (unsigned int f=1; f<folderNames.size(); f++){
-                    if (folderNames[f] == colSource[i]){
-                        menu = folderMenus[f];
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (menu == NULL)
-            menu = this->categories[i];
-
-        this->colMenus[i] = menu;
-    }
-}
-
+/* column order/selection; without the file every category becomes a column */
 void GameManager::loadColumns(){
 
-    for (int i=0; i<MAX_CATEGORIES; i++)
-        colSource[i] = "";
+    colTokens.clear();
 
     SceUID fp = sceIoOpen(COLUMNS_FILE, PSP_O_RDONLY, 0777);
     if (fp < 0)
@@ -1202,97 +1130,158 @@ void GameManager::loadColumns(){
     if (n <= 0)
         return;
 
-    int col = 0;
     char* saveptr = NULL;
-    for (char* line = strtok_r(buf, "\r\n", &saveptr); line != NULL && col < MAX_CATEGORIES; line = strtok_r(NULL, "\r\n", &saveptr)){
+    for (char* line = strtok_r(buf, "\r\n", &saveptr); line != NULL; line = strtok_r(NULL, "\r\n", &saveptr)){
         string token = line;
         while (token.size() > 0 && (token[0] == ' ' || token[0] == '\t'))
             token.erase(0, 1);
         while (token.size() > 0 && (token[token.size()-1] == ' ' || token[token.size()-1] == '\t'))
             token.erase(token.size()-1);
+        if (token.size() == 0)
+            continue;
         if (token == "default" || token == "games" || token == "all")
             token = "";
-        colSource[col++] = token;
+        colTokens.push_back(token);
     }
 }
 
-void GameManager::saveColumns(){
+/* build the column strip: all games, every ISO folder, favorites, homebrew, PS1 */
+void GameManager::buildColumns(){
 
-    SceUID fp = sceIoOpen(COLUMNS_FILE, PSP_O_WRONLY|PSP_O_CREAT|PSP_O_TRUNC, 0777);
-    if (fp < 0)
-        return;
+    string previous;
+    if (selectedCategory >= 0 && selectedCategory < (int)colLabels.size())
+        previous = colLabels[selectedCategory];
 
-    string data = "";
-    for (int i=0; i<MAX_CATEGORIES; i++){
-        data += (colSource[i].size() > 0) ? colSource[i] : string("default");
-        data += "\n";
+    vector<string> tokens = this->colTokens;
+    if (tokens.empty()){
+        tokens.push_back("");
+        for (unsigned int i=1; i<folderNames.size(); i++)
+            tokens.push_back(folderNames[i]);
+        tokens.push_back("favorites");
+        tokens.push_back("homebrew");
+        tokens.push_back("pops");
     }
-    sceIoWrite(fp, data.c_str(), data.size());
-    sceIoClose(fp);
-}
 
-/* assign a source to one column and remember it */
-void GameManager::assignColumn(int col, const string& token){
+    colMenus.clear();
+    colLabels.clear();
 
-    if (col < 0 || col >= MAX_CATEGORIES || colSource[col] == token)
-        return;
+    for (unsigned int i=0; i<tokens.size(); i++){
 
-    SystemMgr::pauseDraw();
-    Menu* old_menu = this->colMenus[col];
-    colSource[col] = token;
-    this->resolveColumns();
-    Menu* new_menu = this->colMenus[col];
-    if (old_menu != NULL && old_menu != new_menu) old_menu->animStart(2);
-    if (new_menu != NULL && new_menu != old_menu) new_menu->animStart(2);
-    SystemMgr::resumeDraw();
+        Menu* menu = NULL;
+        string label = tokens[i];
 
-    common::sound_mp3->play();
-    this->saveColumns();
-    this->input_lock = 10;
-}
+        if (tokens[i].size() == 0){
+            menu = this->categories[GAME];
+            label = "All games";
+        }
+        else if (tokens[i] == "favorites"){
+            menu = favoritesMenu;
+            label = "* Favorites";
+        }
+        else if (tokens[i] == "homebrew"){
+            menu = this->categories[HOMEBREW];
+            label = "Homebrew";
+        }
+        else if (tokens[i] == "pops"){
+            menu = this->categories[POPS];
+            label = "PS1";
+        }
+        else if (tokens[i] == "games" || tokens[i] == "all"){
+            menu = this->categories[GAME];
+            label = "All games";
+        }
+        else{
+            for (unsigned int f=1; f<folderNames.size(); f++){
+                if (folderNames[f] == tokens[i]){
+                    menu = folderMenus[f];
+                    break;
+                }
+            }
+        }
 
-/* R trigger: step the focused column through the available sources */
-void GameManager::cycleColumn(int direction){
+        if (menu == NULL || menu->empty())
+            continue; // skip sources that are missing or hold no games
 
-    if (direction == 0)
-        return;
+        colMenus.push_back(menu);
+        colLabels.push_back(label);
+    }
 
-    vector<string> tokens = this->sourceTokens();
-    int n = (int)tokens.size();
-    if (n < 2)
-        return;
+    if (colMenus.empty()){
+        colMenus.push_back(this->categories[GAME]);
+        colLabels.push_back("All games");
+    }
 
-    int current = 0;
-    for (int i=0; i<n; i++){
-        if (tokens[i] == colSource[selectedCategory]){
-            current = i;
+    // keep the focus on the same category after a rescan when possible
+    selectedCategory = 0;
+    for (unsigned int i=0; i<colLabels.size(); i++){
+        if (previous.size() > 0 && colLabels[i] == previous){
+            selectedCategory = i;
             break;
         }
     }
-
-    this->assignColumn(selectedCategory, tokens[(current + direction + n) % n]);
 }
 
-/* square: pick the source of the focused column */
-void GameManager::categoryPicker(){
+/* keep the focused column inside the visible window */
+void GameManager::clampCamera(){
 
-    if (selectedCategory < 0)
+    int n = (int)colMenus.size();
+    if (n < 1){
+        colOffset = 0;
+        selectedCategory = 0;
+        return;
+    }
+
+    if (selectedCategory >= n) selectedCategory = n-1;
+    if (selectedCategory < 0) selectedCategory = 0;
+
+    int visible = (n < MAX_CATEGORIES) ? n : MAX_CATEGORIES;
+
+    if (selectedCategory < colOffset)
+        colOffset = selectedCategory;
+    if (selectedCategory > colOffset + visible - 1)
+        colOffset = selectedCategory - visible + 1;
+    if (colOffset + visible > n)
+        colOffset = n - visible;
+    if (colOffset < 0)
+        colOffset = 0;
+}
+
+/* jump the focus (and the strip) to a given column */
+void GameManager::focusColumn(int index){
+
+    if (index < 0 || index >= (int)colMenus.size() || index == selectedCategory)
         return;
 
-    vector<string> tokens = this->sourceTokens();
-    if (tokens.size() < 2)
+    SystemMgr::pauseDraw();
+    Menu* old_menu = currentMenu();
+    selectedCategory = index;
+    Menu* new_menu = currentMenu();
+    if (old_menu != NULL && old_menu != new_menu) old_menu->animStart(2);
+    if (new_menu != NULL && new_menu != old_menu) new_menu->animStart(2);
+    this->clampCamera();
+    SystemMgr::resumeDraw();
+
+    common::sound_mp3->play();
+    this->input_lock = 10;
+}
+
+/* square: list every category column and jump straight to the chosen one */
+void GameManager::columnJumpList(){
+
+    if (selectedCategory < 0 || colMenus.size() < 2)
         return;
 
-    // labels[0] is the cancel row, the rest describe the sources (entry values index into tokens)
     std::vector<string> labels;
-    labels.reserve(tokens.size()+1);
+    labels.reserve(colMenus.size()+1);
     labels.push_back(TR("Cancel"));
-    for (unsigned int i=0; i<tokens.size(); i++){
+    for (unsigned int i=0; i<colMenus.size(); i++){
+        string label = colLabels[i];
+        // hide the "NN " ordering prefix in the dialog (the folders keep it on disk)
+        if (label.size() > 3 && label[0] >= '0' && label[0] <= '9' &&
+            label[1] >= '0' && label[1] <= '9' && label[2] == ' ')
+            label = label.substr(3);
         char count[32];
-        snprintf(count, sizeof(count), " (%d)", this->sourceCount(tokens[i], selectedCategory));
-        string label = sourceLabel(tokens[i], selectedCategory);
-        if (tokens[i].size() == 0)
-            label += TR(" (default)");
+        snprintf(count, sizeof(count), " (%d)", (int)colMenus[i]->entries->size());
         labels.push_back(label + string(count));
     }
 
@@ -1306,28 +1295,15 @@ void GameManager::categoryPicker(){
         opts[i].name = (char*)labels[i].c_str();
     }
 
-    int start = 1;
-    for (unsigned int i=0; i<tokens.size(); i++){
-        if (tokens[i] == colSource[selectedCategory]){
-            start = (int)i + 1;
-            break;
-        }
-    }
-
-    string title = TR("Column");
-    char cnum[16];
-    snprintf(cnum, sizeof(cnum), " %d", selectedCategory+1);
-    title += cnum;
-
-    OptionsMenu* om = new OptionsMenu((char*)title.c_str(), (int)labels.size(), opts, start);
+    OptionsMenu* om = new OptionsMenu((char*)TR("Category").c_str(), (int)labels.size(), opts, selectedCategory+1);
     optionsmenu = om;
     int ret = om->control();
     optionsmenu = NULL;
     delete om;
     free(opts);
 
-    if (ret < 0 || ret >= (int)tokens.size())
+    if (ret < 0 || ret >= (int)colMenus.size())
         return;
 
-    this->assignColumn(selectedCategory, tokens[ret]);
+    this->focusColumn(ret);
 }
