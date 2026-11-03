@@ -30,6 +30,7 @@ static float fastScrollInterpolation(){
 
 Menu::Menu(EntryType t){
     this->type = t;
+    this->slot = (int)t;
     this->index = 0;
     this->threadIndex = 0;
     this->animating = 0;
@@ -143,7 +144,7 @@ void Menu::draw(bool selected){
 
     this->checkIndex();
 
-    int xoffset = ((int)this->type)*144 + ((int)this->type+1)*10 + 5;
+    int xoffset = this->slot*144 + (this->slot+1)*10 + 5;
     int yoffset = 20;
     int curentry_yoffset = 0;
     bool scrollAnimation = !fastScrolling && (animating == -1 || animating == 1);
@@ -331,7 +332,7 @@ void Menu::draw(bool selected){
             }
             e_icon->draw_scale(xoffset, yoffset, 0.5f, 0.5f);
             if (getEntry(i)->favorite)
-                common::printText(xoffset+38, yoffset-2, "*", YELLOW_COLOR, SIZE_MEDIUM, 1, NULL, 0);
+                common::printText(xoffset+38, yoffset-2, "*", YELLOW, SIZE_MEDIUM, 1, NULL, 0);
             yoffset += 40;
         }
     }
@@ -349,7 +350,7 @@ void Menu::draw(bool selected){
         common::printText(xoffset, curentry_yoffset+(height/2), "...", WHITE_COLOR, factor, 1, NULL, 0);
         e_icon->draw(xoffset+5, curentry_yoffset+5);
         if (getEntry(this->index)->favorite)
-            common::printText(xoffset + e_icon->texture->width - 6, curentry_yoffset + 2, "*", YELLOW_COLOR, SIZE_BIG, 1, NULL, 0);
+            common::printText(xoffset + e_icon->texture->width - 6, curentry_yoffset + 2, "*", YELLOW, SIZE_BIG, 1, NULL, 0);
     }
 
     if (scrollAnimation || categoryAnimation){

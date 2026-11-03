@@ -22,6 +22,7 @@ class Menu{
 
     public:
         EntryType type;
+        int slot;       /* which on-screen column this menu is drawn in (may differ from type) */
         int index;
         vector<Entry*>* entries;
 
@@ -41,6 +42,9 @@ class Menu{
     public:
         Menu(EntryType t);
         ~Menu();
+        
+        /* a menu can be assigned to any of the three columns */
+        void setSlot(int s){ this->slot = s; }
         
         void draw(bool selected);
         

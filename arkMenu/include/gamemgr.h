@@ -40,7 +40,11 @@ class GameManager : public SystemEntry{
            folderMenus[0] is always categories[GAME] (the "all games" list) */
         vector<Menu*> folderMenus;
         vector<string> folderNames;
-        int selectedFolder;
+        
+        /* what each of the three columns shows:
+           "" = the column's own default menu, "favorites", "homebrew", "pops", or a folder name */
+        Menu* colMenus[MAX_CATEGORIES];
+        string colSource[MAX_CATEGORIES];
         
         /* filters read from SEPLUGINS/gclite_filter.txt (keeps launcher in sync with the XMB) */
         vector<string> hiddenCategories;
@@ -66,9 +70,16 @@ class GameManager : public SystemEntry{
         void saveFavorites();
         void applyFavorites();
         void rebuildFavoritesMenu();
+        /* columns (customizable sources, persisted in SEPLUGINS/arkmenu_columns.txt) */
+        void resolveColumns();
+        void loadColumns();
+        void saveColumns();
+        void assignColumn(int col, const string& token);
+        void cycleColumn(int direction);
         void categoryPicker();
-        void setCategory(int newFolder);
-        void cycleCategory(int direction);
+        vector<string> sourceTokens();
+        string sourceLabel(const string& token, int col);
+        int sourceCount(const string& token, int col);
         
         /* frames during which button actions are ignored (right after switching category) */
         int input_lock;
@@ -155,11 +166,11 @@ class GameManager : public SystemEntry{
             string info = getInfo();
             bool is_entry_info = (getEntry() != NULL && info == getEntry()->getName());
             bool translate = ( !is_entry_info || info == "Recovery Menu" || info == "UMD Drive");
-            // the active ISO folder category is shown in front of the game name, in the
+            // the source of the focused column is shown in front of the game name, in the
             // same line and on the same strip as the rest of the header text
             float x = 5;
-            if (selectedCategory == GAME && selectedFolder > 0 && selectedFolder < (int)folderNames.size()){
-                string tag = "[" + folderNames[selectedFolder] + "]";
+            if (selectedCategory >= 0 && colSource[selectedCategory].size() > 0){
+                string tag = "[" + sourceLabel(colSource[selectedCategory], selectedCategory) + "]";
                 common::printText(x, 13, tag.c_str(), YELLOW, SIZE_MEDIUM, 0, NULL, 0);
                 x += common::calcTextWidth(tag.c_str(), SIZE_MEDIUM, 0) + 6;
             }
