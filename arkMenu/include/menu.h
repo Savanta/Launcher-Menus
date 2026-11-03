@@ -24,6 +24,7 @@ class Menu{
         EntryType type;
         int slot;       /* which on-screen column this menu is drawn in (may differ from type) */
         float slideX;   /* current horizontal offset of the whole strip, in pixels */
+        string label;   /* category name, drawn above the list of an unfocused column */
         int index;
         vector<Entry*>* entries;
 
@@ -46,6 +47,8 @@ class Menu{
         
         /* a menu can be assigned to any of the three columns */
         void setSlot(int s){ this->slot = s; }
+        /* category name shown above the list of an unfocused column */
+        void setLabel(const string& l){ this->label = l; }
         /* horizontal offset of the sliding strip (same value for all visible columns) */
         void setSlideX(float x){ this->slideX = x; }
         

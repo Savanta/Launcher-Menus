@@ -310,7 +310,7 @@ void Menu::draw(bool selected){
         return;
     }
 
-    for (int i=this->index-2; yoffset<272; i++){
+    for (int i=this->index-2; yoffset<258; i++){
         if (i < 0){
             yoffset+=40;
             continue;
@@ -333,7 +333,7 @@ void Menu::draw(bool selected){
             }
             e_icon->draw_scale(xoffset, yoffset, 0.5f, 0.5f);
             if (getEntry(i)->favorite)
-                common::printText(xoffset+38, yoffset-2, "*", YELLOW, SIZE_MEDIUM, 1, NULL, 0);
+                common::printText(xoffset+38, yoffset-2, "*", common::color_marker, SIZE_MEDIUM, 1, NULL, 0);
             yoffset += 40;
         }
     }
@@ -351,7 +351,7 @@ void Menu::draw(bool selected){
         common::printText(xoffset, curentry_yoffset+(height/2), "...", WHITE_COLOR, factor, 1, NULL, 0);
         e_icon->draw(xoffset+5, curentry_yoffset+5);
         if (getEntry(this->index)->favorite)
-            common::printText(xoffset + e_icon->texture->width - 6, curentry_yoffset + 2, "*", YELLOW, SIZE_BIG, 1, NULL, 0);
+            common::printText(xoffset + e_icon->texture->width - 6, curentry_yoffset + 2, "*", common::color_marker, SIZE_BIG, 1, NULL, 0);
     }
 
     if (scrollAnimation || categoryAnimation){
@@ -362,6 +362,24 @@ void Menu::draw(bool selected){
         else if (!this->animDelay){
             animState += 0.125f;
         }
+        return;
+    }
+
+    // at rest each column shows what it is (category name) and which game is selected
+    if (animating == 0 && !fastScrolling && this->entries->size() > 0){
+
+        Entry* cur = getEntry();
+
+        if (!selected && this->label.size() > 0)
+            common::printText(xoffset+2, 146, this->label.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
+
+        int title_y = selected ? (curentry_yoffset + 84) : 160;
+        float title_size = selected ? SIZE_LITTLE : SIZE_TINY;
+        string title = cur->getName();
+        while (title.size() > 4 && common::calcTextWidth(title.c_str(), title_size, 0) > 140)
+            title.erase(title.size()-1);
+
+        common::printText(xoffset+2, title_y, title.c_str(), GRAY_COLOR, title_size, 0, NULL, 0);
     }
 }
 

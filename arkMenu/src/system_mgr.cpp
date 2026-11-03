@@ -343,7 +343,7 @@ static void systemDrawer(){
     switch (optionsDrawState){
         case 0:
             // draw border, battery and datetime
-            common::getImage(IMAGE_DIALOG)->draw_scale(0, 0, 480, 20);
+            common::getImage(IMAGE_HEADER)->draw_scale(0, 0, 480, 20);
             drawBattery();
             drawDateTime();
             // draw entry text

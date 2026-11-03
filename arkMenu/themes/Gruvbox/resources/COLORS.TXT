@@ -1,0 +1,5 @@
+# arkMenu theme colours (RRGGBB)
+text   = ebdbb2
+dim    = 928374
+accent = fabd2f
+marker = fe8019

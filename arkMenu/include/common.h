@@ -47,6 +47,7 @@ enum images {
     IMAGE_SPRITE,
     IMAGE_EXIT,
     IMAGE_PLUGINS,
+    IMAGE_HEADER,
     MAX_IMAGES
 };
 
@@ -96,6 +97,12 @@ namespace common{
     extern char** argv;
     extern struct tm today;
     extern MP3* sound_mp3;
+    /* theme colours; a theme overrides them with COLORS.TXT inside its resources */
+    extern u32 color_text;
+    extern u32 color_dim;
+    extern u32 color_accent;
+    extern u32 color_marker;
+    extern void loadThemeColors();
     extern bool has_suffix(const std::string &str, const std::string &suffix);
     SceOff findPkgOffset(const char* filename, unsigned* size = NULL, const char* pkgpath=NULL, void (*missinghandler)(const char*) = NULL);
     extern void dummyMissingHandler(const char* filename);

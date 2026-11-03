@@ -37,6 +37,10 @@ int common::argc;
 char** common::argv;
 int common::psp_model;
 ArkMenuConf common::config;
+u32 common::color_text   = GRAY_COLOR;
+u32 common::color_dim    = LITEGRAY;
+u32 common::color_accent = YELLOW_COLOR;
+u32 common::color_marker = YELLOW_COLOR;
 ARKConfig common::ark_config = {0};
 bool common::is_recovery = false;
 string common::theme_path = THEME_NAME;
@@ -454,7 +458,64 @@ void common::stopLoadingThread(){
     load_thread_id = -1;
 }
 
+void common::loadThemeColors(){
+
+    color_text   = GRAY_COLOR;
+    color_dim    = LITEGRAY;
+    color_accent = YELLOW_COLOR;
+    color_marker = YELLOW_COLOR;
+
+    if (findPkgOffset("COLORS.TXT", NULL, NULL, dummyMissingHandler) <= 0)
+        return;
+
+    unsigned size = 0;
+    void* data = readFromPKG("COLORS.TXT", &size, NULL);
+    if (data == NULL || size == 0){
+        if (data) free(data);
+        return;
+    }
+
+    char* buf = (char*)data;
+    char* saveptr = NULL;
+    for (char* line = strtok_r(buf, "\r\n", &saveptr); line != NULL; line = strtok_r(NULL, "\r\n", &saveptr)){
+
+        while (*line == ' ' || *line == '\t') line++;
+        if (*line == 0 || *line == '#' || *line == ';')
+            continue;
+
+        char* eq = strchr(line, '=');
+        if (eq == NULL)
+            continue;
+        *eq = 0;
+
+        string key = line;
+        string val = eq+1;
+        while (key.size() > 0 && (key[key.size()-1] == ' ' || key[key.size()-1] == '\t'))
+            key.erase(key.size()-1);
+        while (val.size() > 0 && (val[0] == ' ' || val[0] == '\t'))
+            val.erase(0, 1);
+        if (key != "text" && key != "dim" && key != "accent" && key != "marker" && key != "favorite")
+            continue;
+        if (val.size() < 6)
+            continue;
+
+        // RRGGBB -> ARK's ABGR word
+        unsigned int v = (unsigned int)strtoul(val.substr(val.size()-6).c_str(), NULL, 16);
+        u32 r = (v >> 16) & 0xFF, g = (v >> 8) & 0xFF, b = v & 0xFF;
+        u32 col = 0xFF000000u | (b << 16) | (g << 8) | r;
+
+        if (key == "text")            color_text = col;
+        else if (key == "dim")        color_dim = col;
+        else if (key == "accent")     color_accent = col;
+        else                          color_marker = col;
+    }
+    free(data);
+}
+
 void common::loadTheme(){
+
+    loadThemeColors();
+
     SceIoStat stat;
     SceOff pkg_bg_off;
     string custom_path1 = string(ark_config.arkpath) + "BG.JPG";
@@ -495,6 +556,13 @@ void common::loadTheme(){
 
     SceOff offset = common::findPkgOffset("CFWSETTINGS.PNG", NULL, NULL, dummyMissingHandler);
     images[IMAGE_CFWSETTINGS] = (offset > 0)? new Image(theme_path, RESOURCES_LOAD_PLACE, offset) : NULL;
+
+    // the header bar: a theme may ship its own HEADER.PNG, otherwise BOX.PNG is stretched
+    SceOff header_offset = common::findPkgOffset("HEADER.PNG", NULL, NULL, dummyMissingHandler);
+    if (header_offset > 0)
+        images[IMAGE_HEADER] = new Image(theme_path, RESOURCES_LOAD_PLACE, header_offset);
+    else
+        images[IMAGE_HEADER] = new Image(theme_path, RESOURCES_LOAD_PLACE, common::findPkgOffset("BOX.PNG"));
 
     icons[FOLDER] = new Image(theme_path, RESOURCES_LOAD_PLACE, common::findPkgOffset("FOLDER.PNG"));
     icons[FILE_BIN] = new Image(theme_path, RESOURCES_LOAD_PLACE, common::findPkgOffset("FILE.PNG"));
@@ -699,6 +767,14 @@ void common::printText(float x, float y, const char* text, u32 color, float size
 
     if (font == NULL)
         return;
+
+    // the three "generic" colours follow the active theme (see COLORS.TXT)
+    if (color == GRAY_COLOR)
+        color = common::color_text;
+    else if (color == LITEGRAY)
+        color = common::color_dim;
+    else if (color == YELLOW_COLOR)
+        color = common::color_accent;
 
     string translated = (translate)? TR(text) : text;
     intraFont* textFont = font;

@@ -96,6 +96,8 @@ GameManager::~GameManager(){
     }
     // folderMenus[0] is categories[GAME] (deleted above); the favorites menu is owned by folderMenus
     this->favoritesMenu = NULL;
+    this->recentMenu = NULL;
+    this->lastSlideClock = 0;
     for (unsigned int i=1; i<this->folderMenus.size(); i++){
         delete this->folderMenus[i];
     }
@@ -210,9 +212,12 @@ void GameManager::findEntries(){
     if (!ms_is_ef) this->findISOs("ef0:/ISO/");
 
     // build the ISO folder categories (folder mode), apply favorites and the column strip
+    // (the favorites/recent menus are rebuilt *after* the scan, which drops the old ones)
     this->loadFavorites();
-    this->rebuildFavoritesMenu();
+    this->loadRecent();
     this->scanFolderCategories();
+    this->rebuildFavoritesMenu();
+    this->rebuildRecentMenu();
     this->buildColumns();
     this->clampCamera();
     this->applyFavorites();
@@ -483,11 +488,24 @@ string GameManager::getInfo(){
 void GameManager::draw(){
     if (this->selectedCategory >= 0){
 
-        // slide the strip to its resting position: the focused column ends up at the left edge
-        if (this->slideX > 0.5f || this->slideX < -0.5f)
-            this->slideX *= 0.62f;
-        else
-            this->slideX = 0.f;
+        // slide the strip to its resting position, time based so a heavy theme
+        // animates the same as a light one (about 0.25 s per column)
+        clock_t now = sceKernelLibcClock();
+        float dt = (this->lastSlideClock > 0) ? (float)(now - this->lastSlideClock) / (float)CLOCKS_PER_SEC : 0.016f;
+        this->lastSlideClock = now;
+        if (dt <= 0.f || dt > 0.1f) dt = 0.016f;
+
+        if (this->slideX != 0.f){
+            float step = COLUMN_STEP * 4.0f * dt;
+            if (this->slideX > 0.f){
+                this->slideX -= step;
+                if (this->slideX < 0.5f) this->slideX = 0.f;
+            }
+            else{
+                this->slideX += step;
+                if (this->slideX > -0.5f) this->slideX = 0.f;
+            }
+        }
 
         // columns to the right of the focused one are drawn first (the focused stays on top)
         for (int slot=MAX_CATEGORIES-1; slot>=1; slot--){
@@ -495,6 +513,7 @@ void GameManager::draw(){
             if (col == NULL)
                 continue;
             col->setSlot(slot);
+            col->setLabel(this->visibleLabel(slot));
             col->setSlideX(this->slideX);
             col->draw(false);
             sceKernelDelayThread(0);
@@ -502,9 +521,13 @@ void GameManager::draw(){
         Menu* menu = this->visibleMenu(0);
         if (menu != NULL){
             menu->setSlot(0);
+            menu->setLabel(this->visibleLabel(0));
             menu->setSlideX(this->slideX);
             menu->draw(true);
         }
+
+        this->drawFooter();
+
         if (optionsmenu) optionsmenu->draw();
     }
     if (loadingData || selectedCategory == -1){
@@ -873,6 +896,7 @@ void GameManager::startBoot(){
  * ===================================================================== */
 
 #define FAVORITES_FILE "ms0:/SEPLUGINS/arkmenu_fav.txt"
+#define RECENT_FILE    "ms0:/SEPLUGINS/arkmenu_recent.txt"
 
 /* read SEPLUGINS/gclite_filter.txt so the launcher hides what the XMB hides */
 void GameManager::loadGclFilters(){
@@ -952,6 +976,7 @@ void GameManager::scanFolderCategories(){
 
     // drop the old folder menus (folderMenus[0] is categories[GAME], keep it)
     this->favoritesMenu = NULL; // owned by folderMenus, will be rebuilt afterwards
+    this->recentMenu = NULL;
     for (unsigned int i=1; i<folderMenus.size(); i++)
         delete folderMenus[i];
     folderMenus.resize(1);
@@ -1130,12 +1155,13 @@ void GameManager::buildColumns(){
     // every category becomes a column, directly from the scan: a stale configuration
     // file can neither hide categories nor put the same menu into two columns
     vector<string> tokens;
-    tokens.push_back("");
     for (unsigned int i=1; i<folderNames.size(); i++)
         tokens.push_back(folderNames[i]);
     tokens.push_back("favorites");
+    tokens.push_back("recent");
     tokens.push_back("homebrew");
     tokens.push_back("pops");
+    tokens.push_back("");   // "all games" last: it duplicates the whole library
 
     colMenus.clear();
     colLabels.clear();
@@ -1152,6 +1178,10 @@ void GameManager::buildColumns(){
         else if (tokens[i] == "favorites"){
             menu = favoritesMenu;
             label = "* Favorites";
+        }
+        else if (tokens[i] == "recent"){
+            menu = recentMenu;
+            label = TR("Recently played");
         }
         else if (tokens[i] == "homebrew"){
             menu = this->categories[HOMEBREW];
@@ -1299,4 +1329,119 @@ void GameManager::columnJumpList(){
         return;
 
     this->focusColumn(ret);
+}
+
+/* label of the column drawn in a given slot, without the "NN " ordering prefix */
+string GameManager::visibleLabel(int slot){
+
+    int n = (int)colMenus.size();
+    if (n < 1 || slot < 0)
+        return "";
+    if (n < MAX_CATEGORIES && slot >= n)
+        return "";
+
+    int idx = (selectedCategory + slot) % n;
+    if (idx < 0)
+        idx += n;
+    if (idx >= (int)colLabels.size())
+        return "";
+
+    string label = colLabels[idx];
+    if (label.size() > 3 && label[0] >= '0' && label[0] <= '9' &&
+        label[1] >= '0' && label[1] <= '9' && label[2] == ' ')
+        label = label.substr(3);
+    return label;
+}
+
+/* bottom line: position inside the strip (with wrap cues) and the button hints */
+void GameManager::drawFooter(){
+
+    int n = (int)colMenus.size();
+    if (n < 1)
+        return;
+
+    char pos[32];
+    snprintf(pos, sizeof(pos), "%s %d/%d %s",
+             (selectedCategory > 0) ? "<" : " ",
+             selectedCategory + 1, n,
+             (selectedCategory < n - 1) ? ">" : " ");
+    common::printText(5, 259, pos, LITEGRAY, SIZE_TINY, 0, NULL, 0);
+
+    string hints = TR("X Start   L Favorites   Square Categories   Select Refresh");
+    int w = common::calcTextWidth(hints.c_str(), SIZE_TINY, 1);
+    common::printText(475 - w, 259, hints.c_str(), LITEGRAY, SIZE_TINY, 0, NULL, 0);
+}
+
+void GameManager::loadRecent(){
+
+    this->recent.clear();
+
+    SceUID fp = sceIoOpen(RECENT_FILE, PSP_O_RDONLY, 0777);
+    if (fp < 0)
+        return;
+
+    unsigned int size = (unsigned int)sceIoLseek(fp, 0, PSP_SEEK_END);
+    sceIoLseek(fp, 0, PSP_SEEK_SET);
+
+    if (size > 0 && size < 128*1024){
+        char* buf = (char*)malloc(size+1);
+        if (buf){
+            memset(buf, 0, size+1);
+            sceIoRead(fp, buf, size);
+            buf[size] = 0;
+            char* saveptr = NULL;
+            for (char* line = strtok_r(buf, "\r\n", &saveptr); line != NULL; line = strtok_r(NULL, "\r\n", &saveptr)){
+                while (*line == ' ' || *line == '\t') line++;
+                if (line[0] == 0) continue;
+                this->recent.push_back(line);
+                if (this->recent.size() >= 10) break;
+            }
+            free(buf);
+        }
+    }
+    sceIoClose(fp);
+}
+
+/* "Recently played" column, rebuilt whenever it changes */
+void GameManager::rebuildRecentMenu(){
+
+    if (recentMenu){
+        for (unsigned int i=1; i<folderMenus.size(); i++){
+            if (folderMenus[i] == recentMenu){
+                folderMenus.erase(folderMenus.begin()+i);
+                folderNames.erase(folderNames.begin()+i);
+                break;
+            }
+        }
+        delete recentMenu;
+        recentMenu = NULL;
+    }
+
+    if (recent.size() == 0){
+        this->buildColumns();
+        return;
+    }
+
+    Menu* menu = new Menu(GAME);
+    for (unsigned int i=0; i<recent.size(); i++){
+        const string path = recent[i];
+        Entry* entry = NULL;
+        if (Eboot::isEboot(path.c_str()))
+            entry = new Eboot(path);
+        else if (Iso::isISO(path.c_str()))
+            entry = new Iso(path);
+        if (entry)
+            menu->addEntry(entry);
+    }
+
+    if (menu->empty()){
+        delete menu;
+        this->buildColumns();
+        return;
+    }
+
+    recentMenu = menu;
+    folderMenus.push_back(menu);
+    folderNames.push_back(TR("* Recently played"));
+    this->buildColumns();
 }

@@ -56,6 +56,11 @@ class GameManager : public SystemEntry{
         vector<string> favorites;
         Menu* favoritesMenu;
         
+        /* recently played (paths, persisted in SEPLUGINS/arkmenu_recent.txt) */
+        vector<string> recent;
+        Menu* recentMenu;
+        clock_t lastSlideClock;     // for the time based strip animation
+        
         /* Selected game menu */
         int selectedCategory;
         int maxDraw;
@@ -77,6 +82,10 @@ class GameManager : public SystemEntry{
         void clampCamera();
         void focusColumn(int index);
         void columnJumpList();
+        void drawFooter();
+        string visibleLabel(int slot);
+        void loadRecent();
+        void rebuildRecentMenu();
         
         /* frames during which button actions are ignored (right after switching category) */
         int input_lock;
@@ -174,7 +183,7 @@ class GameManager : public SystemEntry{
                     label[1] >= '0' && label[1] <= '9' && label[2] == ' ')
                     label = label.substr(3);
                 string tag = "[" + label + "]";
-                common::printText(x, 13, tag.c_str(), YELLOW, SIZE_MEDIUM, 0, NULL, 0);
+                common::printText(x, 13, tag.c_str(), YELLOW_COLOR, SIZE_MEDIUM, 0, NULL, 0);
                 x += common::calcTextWidth(tag.c_str(), SIZE_MEDIUM, 0) + 6;
             }
             common::printText(x, 13, info.c_str(), LITEGRAY, SIZE_MEDIUM, 0, &scroll, translate);

@@ -1,5 +1,6 @@
 #include <cstring>
 #include <pspdisplay.h>
+#include <pspiofilemgr.h>
 
 #include <pspav/pspav.h>
 #include <pspav/mp3.h>
@@ -76,12 +77,52 @@ void Entry::freeIcon(){
         delete aux;
 }
 
+/* keep ms0:/SEPLUGINS/arkmenu_recent.txt up to date (newest first, at most 10 entries) */
+static void rememberRecent(const char* path){
+
+    if (path == NULL || path[0] == 0)
+        return;
+    if (strstr(path, "/PSP/SAVEDATA/") != NULL)
+        return;
+
+    const char* file = "ms0:/SEPLUGINS/arkmenu_recent.txt";
+
+    vector<string> list;
+    SceUID fp = sceIoOpen(file, PSP_O_RDONLY, 0777);
+    if (fp >= 0){
+        char buf[2048];
+        memset(buf, 0, sizeof(buf));
+        int n = sceIoRead(fp, buf, sizeof(buf)-1);
+        sceIoClose(fp);
+        if (n > 0){
+            char* saveptr = NULL;
+            for (char* line = strtok_r(buf, "\r\n", &saveptr); line != NULL && list.size() < 9; line = strtok_r(NULL, "\r\n", &saveptr)){
+                if (line[0] == 0 || strcmp(line, path) == 0)
+                    continue;
+                list.push_back(line);
+            }
+        }
+    }
+
+    fp = sceIoOpen(file, PSP_O_WRONLY|PSP_O_CREAT|PSP_O_TRUNC, 0777);
+    if (fp < 0)
+        return;
+
+    string data = string(path) + "\n";
+    for (unsigned int i=0; i<list.size(); i++)
+        data += list[i] + "\n";
+    sceIoWrite(fp, data.c_str(), data.size());
+    sceIoClose(fp);
+}
+
 void Entry::execute(bool isAutoboot){
     if (!isAutoboot) {
         char* last_game = common::config.last_game;
         if (strcmp(last_game, this->path.c_str()) != 0 && name != "UMD Drive" && name != "Recovery Menu"){
             strcpy(last_game, this->path.c_str());
         }
+        if (name != "UMD Drive" && name != "Recovery Menu")
+            rememberRecent(this->path.c_str());
         common::saveConf();
         this->gameBoot();
     }
