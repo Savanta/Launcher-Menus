@@ -44,7 +44,9 @@ class GameManager : public SystemEntry{
         /* columns: one per category, drawn side by side (three visible at a time) */
         vector<Menu*> colMenus;
         vector<string> colLabels;
-        int colOffset;              // first visible column
+        float slideX;               // strip offset used while sliding to the next column
+        /* the menu shown in a given on-screen slot, counted from the focused column */
+        Menu* visibleMenu(int slot);
         
         /* filters read from SEPLUGINS/gclite_filter.txt (keeps launcher in sync with the XMB) */
         vector<string> hiddenCategories;

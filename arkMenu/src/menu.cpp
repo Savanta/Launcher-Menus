@@ -31,6 +31,7 @@ static float fastScrollInterpolation(){
 Menu::Menu(EntryType t){
     this->type = t;
     this->slot = (int)t;
+    this->slideX = 0.f;
     this->index = 0;
     this->threadIndex = 0;
     this->animating = 0;
@@ -144,7 +145,7 @@ void Menu::draw(bool selected){
 
     this->checkIndex();
 
-    int xoffset = this->slot*144 + (this->slot+1)*10 + 5;
+    int xoffset = this->slot*144 + (this->slot+1)*10 + 5 + (int)this->slideX;
     int yoffset = 20;
     int curentry_yoffset = 0;
     bool scrollAnimation = !fastScrolling && (animating == -1 || animating == 1);

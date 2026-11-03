@@ -23,6 +23,7 @@ class Menu{
     public:
         EntryType type;
         int slot;       /* which on-screen column this menu is drawn in (may differ from type) */
+        float slideX;   /* current horizontal offset of the whole strip, in pixels */
         int index;
         vector<Entry*>* entries;
 
@@ -45,6 +46,8 @@ class Menu{
         
         /* a menu can be assigned to any of the three columns */
         void setSlot(int s){ this->slot = s; }
+        /* horizontal offset of the sliding strip (same value for all visible columns) */
+        void setSlideX(float x){ this->slideX = x; }
         
         void draw(bool selected);
         

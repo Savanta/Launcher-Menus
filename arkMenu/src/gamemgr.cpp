@@ -19,6 +19,9 @@ static GameManager* self = NULL;
 
 static bool loadingData = false;
 
+/* horizontal pitch of one column (144 px wide + 10 px gap), used by the sliding strip */
+#define COLUMN_STEP 154
+
 ARKConfig* ark_config;
 
 GameManager* GameManager::getInstance(){
@@ -77,7 +80,7 @@ GameManager::GameManager(){
     this->favoritesMenu = NULL;
     this->folderMenus.push_back(this->categories[GAME]);
     this->folderNames.push_back("");
-    this->colOffset = 0;
+    this->slideX = 0.f;
 
     // start the multithreaded icon loading
     this->maxDraw = MAX_CATEGORIES;
@@ -125,10 +128,10 @@ int GameManager::loadIcons(SceSize _args, void *_argp){
             sceKernelDelayThread(0);
             continue;
         }
-        int visible = (int)self->colMenus.size();
-        for (int i=self->colOffset; i<self->colOffset+MAX_CATEGORIES && i<visible; i++){
-            if (self->colMenus[i] != NULL)
-                self->colMenus[i]->loadIconsDynamic(i == self->selectedCategory);
+        for (int slot=0; slot<MAX_CATEGORIES; slot++){
+            Menu* col = self->visibleMenu(slot);
+            if (col != NULL)
+                col->loadIconsDynamic(slot == 0);
             sceKernelDelayThread(0);
         }
         sceKernelSignalSema(self->iconSema, 1);
@@ -163,11 +166,11 @@ bool GameManager::waitIconsLoad(bool forceQuit){
     if (icon_status == ICONS_LOADING)
         this->pauseIcons();
 
-    for (int i = this->colOffset; i < this->colOffset+MAX_CATEGORIES && i < (int)this->colMenus.size(); i++){
-        Menu* menu = this->colMenus[i];
+    for (int slot=0; slot<MAX_CATEGORIES; slot++){
+        Menu* menu = this->visibleMenu(slot);
         if (menu == NULL)
             continue;
-        if (!menu->waitIconsLoad(i == selectedCategory, forceQuit))
+        if (!menu->waitIconsLoad(slot == 0, forceQuit))
             return false;
     }
 
@@ -395,12 +398,12 @@ void GameManager::moveLeft(){
     SystemMgr::pauseDraw();
     int auxCategory = getPreviousCategory(selectedCategory);
     if (auxCategory != selectedCategory){
-        Menu* old_menu = currentMenu();
         selectedCategory = auxCategory;
         Menu* new_menu = currentMenu();
-        if (old_menu) old_menu->animStart(-2);
-        if (new_menu && new_menu != old_menu) new_menu->animStart(-2);
+        if (new_menu) new_menu->animStart(-2);
+        this->slideX = -(float)COLUMN_STEP;   // the strip slides in from the left
         this->clampCamera();
+        this->input_lock = 8;
         SystemMgr::resumeDraw();
         common::sound_mp3->play();
     }
@@ -416,12 +419,12 @@ void GameManager::moveRight(){
     int auxCategory = getNextCategory(selectedCategory);
     
     if (auxCategory != selectedCategory){
-        Menu* old_menu = currentMenu();
         selectedCategory = auxCategory;
         Menu* new_menu = currentMenu();
-        if (old_menu) old_menu->animStart(2);
-        if (new_menu && new_menu != old_menu) new_menu->animStart(2);
+        if (new_menu) new_menu->animStart(2);
+        this->slideX = (float)COLUMN_STEP;   // the strip slides in from the right
         this->clampCamera();
+        this->input_lock = 8;
         SystemMgr::resumeDraw();
         common::sound_mp3->play();
     }
@@ -479,22 +482,27 @@ string GameManager::getInfo(){
 
 void GameManager::draw(){
     if (this->selectedCategory >= 0){
-        for (int i=this->colOffset; i<this->colOffset+this->maxDraw; i++){
-            if (i >= (int)this->colMenus.size())
-                break;
-            if (i == (int)this->selectedCategory)
-                continue;
-            Menu* col = this->colMenus[i];
+
+        // slide the strip to its resting position: the focused column ends up at the left edge
+        if (this->slideX > 0.5f || this->slideX < -0.5f)
+            this->slideX *= 0.62f;
+        else
+            this->slideX = 0.f;
+
+        // columns to the right of the focused one are drawn first (the focused stays on top)
+        for (int slot=MAX_CATEGORIES-1; slot>=1; slot--){
+            Menu* col = this->visibleMenu(slot);
             if (col == NULL)
                 continue;
-            col->setSlot(i - this->colOffset);
+            col->setSlot(slot);
+            col->setSlideX(this->slideX);
             col->draw(false);
             sceKernelDelayThread(0);
         }
-        Menu* menu = currentMenu();
-        if (menu != NULL && selectedCategory >= this->colOffset &&
-            selectedCategory < this->colOffset + this->maxDraw){
-            menu->setSlot(this->selectedCategory - this->colOffset);
+        Menu* menu = this->visibleMenu(0);
+        if (menu != NULL){
+            menu->setSlot(0);
+            menu->setSlideX(this->slideX);
             menu->draw(true);
         }
         if (optionsmenu) optionsmenu->draw();
@@ -1199,29 +1207,32 @@ void GameManager::buildColumns(){
     }
 }
 
-/* keep the focused column inside the visible window */
+/* the focused column is always drawn at the left edge, so only the index must stay valid */
 void GameManager::clampCamera(){
 
     int n = (int)colMenus.size();
     if (n < 1){
-        colOffset = 0;
         selectedCategory = 0;
         return;
     }
 
     if (selectedCategory >= n) selectedCategory = n-1;
     if (selectedCategory < 0) selectedCategory = 0;
+}
 
-    int visible = (n < MAX_CATEGORIES) ? n : MAX_CATEGORIES;
+/* menu drawn in an on-screen slot, counted from the focused column (wraps around) */
+Menu* GameManager::visibleMenu(int slot){
 
-    if (selectedCategory < colOffset)
-        colOffset = selectedCategory;
-    if (selectedCategory > colOffset + visible - 1)
-        colOffset = selectedCategory - visible + 1;
-    if (colOffset + visible > n)
-        colOffset = n - visible;
-    if (colOffset < 0)
-        colOffset = 0;
+    int n = (int)colMenus.size();
+    if (n < 1 || slot < 0)
+        return NULL;
+    if (n < MAX_CATEGORIES && slot >= n)
+        return NULL;   // never repeat the same menu in two slots
+
+    int idx = (selectedCategory + slot) % n;
+    if (idx < 0)
+        idx += n;
+    return colMenus[idx];
 }
 
 /* jump the focus (and the strip) to a given column */
@@ -1230,12 +1241,16 @@ void GameManager::focusColumn(int index){
     if (index < 0 || index >= (int)colMenus.size() || index == selectedCategory)
         return;
 
+    int delta = index - selectedCategory;
+    int steps = (delta > 0) ? delta : -delta;
+    if (steps > MAX_CATEGORIES)
+        steps = MAX_CATEGORIES;
+
     SystemMgr::pauseDraw();
-    Menu* old_menu = currentMenu();
     selectedCategory = index;
     Menu* new_menu = currentMenu();
-    if (old_menu != NULL && old_menu != new_menu) old_menu->animStart(2);
-    if (new_menu != NULL && new_menu != old_menu) new_menu->animStart(2);
+    if (new_menu) new_menu->animStart(2);
+    this->slideX = (float)(COLUMN_STEP * steps * ((delta > 0) ? 1 : -1));
     this->clampCamera();
     SystemMgr::resumeDraw();
 
